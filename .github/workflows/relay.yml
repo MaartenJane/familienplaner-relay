@@ -1,0 +1,35 @@
+name: Relay
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # GitHub startet oft ein paar Minuten später
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # signierte Kennung für den Worker (kein Geheimnis im Repo nötig)
+  actions: write    # nur für das monatliche Wachhalten unten
+
+concurrency:
+  group: relay
+  cancel-in-progress: false
+
+jobs:
+  senden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Wartende Nachrichten senden
+        run: node relay.mjs
+      # GitHub pausiert Zeitpläne in öffentlichen Repos nach 60 Tagen ohne Aktivität.
+      - name: Zeitplan wachhalten (am 1. des Monats)
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(date -u +%d%H%M | cut -c1-4)" = "0103" ]; then
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/relay.yml/enable" && echo "wachgehalten"
+          fi
